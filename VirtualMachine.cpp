@@ -1,8 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "VirtualMachine.h"
+#include "Machine.h"
 
-using namespace std;
+// using namespace std;
 
 // VMStart
 // -Use typedef to define a function pointer and then create an instance/variable of that function pointer type
@@ -13,9 +14,13 @@ using namespace std;
 // -You'll notice that it in hello.c it calls VMPrint
 // -So get VMPrint to work using some system calls and error handling
 
+extern "C" {TVMMainEntry VMLoadModule(const char *module);}
+
+
 TVMStatus VMStart(int tickms, int machinetickms, int argc, char *argv[]) {
-    typedef void (*TVMMain)(int argc, char* argv[]);
-    TVMMain MyMain;
+    typedef void (*TVMMainEntry)(int argc, char* argv[]);
+    TVMMainEntry MyMain;
     MyMain = VMLoadModule();
     MyMain(argc, argv);
 };
+

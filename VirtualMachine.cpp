@@ -76,4 +76,14 @@ TVMStatus VMStart(int tickms, int machinetickms, int argc, char *argv[]) {
         return VM_STATUS_FAILURE;
     }
 }
+
+TVMStatus VMThreadSleep(TVMTick tick){
+    if (tick == VM_TIMEOUT_INFINITE) {
+        return VM_STATUS_ERROR_INVALID_PARAMETER;
+    }
+    else {
+        sleep(tick);
+        return VM_STATUS_SUCCESS;
+    }
+}
 } // end extern C

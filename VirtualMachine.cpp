@@ -14,13 +14,26 @@
 // -You'll notice that it in hello.c it calls VMPrint
 // -So get VMPrint to work using some system calls and error handling
 
-extern "C" {TVMMainEntry VMLoadModule(const char *module);}
+extern "C" {
+TVMMainEntry VMLoadModule(const char *module);
+
 
 
 TVMStatus VMStart(int tickms, int machinetickms, int argc, char *argv[]) {
     typedef void (*TVMMainEntry)(int argc, char* argv[]);
-    TVMMainEntry MyMain;
-    MyMain = VMLoadModule();
-    MyMain(argc, argv);
-};
+    TVMMainEntry VMMain;
+    VMMain = VMLoadModule(argv[0]);
+    if (VMMain != NULL) {
+        VMMain(argc, argv);
+        return VM_STATUS_SUCCESS;
+    }
+    else {
+        return VM_STATUS_FAILURE;
+    }
+}
 
+
+
+
+
+} // end extern C

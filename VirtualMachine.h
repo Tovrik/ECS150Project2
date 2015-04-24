@@ -41,6 +41,7 @@ typedef void (*TVMThreadEntry)(void *);
 
 TVMStatus VMStart(int tickms, int machinetickms, int argc, char *argv[]);
 
+// can create a TCB instance in VMThreadCreate or in Activate
 TVMStatus VMThreadCreate(TVMThreadEntry entry, void *param, TVMMemorySize memsize, TVMThreadPriority prio, TVMThreadIDRef tid);
 TVMStatus VMThreadDelete(TVMThreadID thread);
 TVMStatus VMThreadActivate(TVMThreadID thread);

@@ -2,15 +2,91 @@
 #include <stdlib.h>
 #include "VirtualMachine.h"
 #include "Machine.h"
+#include <vector>
+#include <queue>
 
-// using namespace std;
+using namespace std;
 
 extern "C" {
-volatile int timer;
+///////////////////////// TCB Class Definition ///////////////////////////
+enum state_t { dead, ready, waiting, running };
+enum priority_t { low, medium, high };
 
+class TCB
+{
+public:
+    TCB();
+    ~TCB();
+
+    int id;
+    state_t thread_state;
+    priority_t thread_priority;
+    // mutex_info, stack_size, stack_base, entry_point, entry_params, SMachineContext
+    int ticks_remaining;
+};
+
+///////////////////////// Globals ///////////////////////////
+volatile int timer;
+vector<TCB*> thread_vector;
+queue<TCB*> low_priority_queue;
+queue<TCB*> medium_priority_queue;
+queue<TCB*> high_priority_queue;
+TCB* current_thread;
+
+///////////////////////// Function Prototypes ///////////////////////////
 TVMMainEntry VMLoadModule(const char *module);
 
+///////////////////////// Utilities ///////////////////////////
+void scheduler_action(queue<TCB*> & Q) {
+    current_thread->thread_state = ready;
+    current_thread = Q.front();
+    Q.pop();
+    current_thread->thread_state = running;
+}
 
+void scheduler() {
+    if (!high_priority_queue.empty()) {
+        scheduler_action(high_priority_queue);
+    }
+    else if (!medium_priority_queue.empty()) {
+        scheduler_action(medium_priority_queue);
+    }
+    else if (!low_priority_queue.empty()) {
+        scheduler_action(low_priority_queue);
+    }
+}
+
+void update_thread_ticks () {
+    for (uint i = 0; i < thread_vector.size(); ++i) {
+        if (thread_vector[i]->ticks_remaining > 0) {
+            thread_vector[i]->ticks_remaining--;
+        } 
+        if (thread_vector[i]->ticks_remaining ==  0) {
+            thread_vector[i]->thread_state = ready;
+            switch (thread_vector[i]->thread_priority) {
+                case high:
+                    high_priority_queue.push(thread_vector[i]);
+                    break;
+                case medium:
+                    medium_priority_queue.push(thread_vector[i]);
+                    break;
+                case low:
+                    low_priority_queue.push(thread_vector[i]);
+                    break;
+            }
+            // sets it to -1
+            thread_vector[i]->ticks_remaining--;
+        }
+    }
+}
+
+///////////////////////// Callbacks ///////////////////////////
+// for ref: typedef void (*TMachineAlarmCallback)(void *calldata);
+void timerDecrement(void *calldata) {
+    timer -= 1;
+}
+
+///////////////////////// VM Functions ///////////////////////////
 TVMStatus VMFileClose(int filedescriptor) {
     if (close(filedescriptor) == 0) {
         return VM_STATUS_SUCCESS;
@@ -55,11 +131,6 @@ TVMStatus VMFileWrite(int filedescriptor, void *data, int *length) {
     }
 }
 
-// for ref: typedef void (*TMachineAlarmCallback)(void *calldata);
-void dec(void *calldata) {
-    timer -= 1;
-}
-
 // VMStart
 // -Use typedef to define a function pointer and then create an instance/variable of that function pointer type
 // -Then set that variable equal to the address returned from VMLoadModule
@@ -75,15 +146,13 @@ void dec(void *calldata) {
 // 3. MachineRequestAlarm
 // 4. MachineEnableSignals
 // 5. VMMain (whatever VMLoadModule returned)
-
-
 TVMStatus VMStart(int tickms, int machinetickms, int argc, char *argv[]) { //The time in milliseconds of the virtual machine tick is specified by the tickms parameter, the machine responsiveness is specified by the machinetickms.
     typedef void (*TVMMainEntry)(int argc, char* argv[]);
     TVMMainEntry VMMain;
     VMMain = VMLoadModule(argv[0]);
     if (VMMain != NULL) {
         MachineInitialize(machinetickms); //The timeout parameter specifies the number of milliseconds the machine will sleep between checking for requests.
-        MachineRequestAlarm(tickms*1000, dec, NULL); // NULL b/c passing data through global vars
+        MachineRequestAlarm(tickms*1000, timerDecrement, NULL); // NULL b/c passing data through global vars
         MachineEnableSignals();
         VMMain(argc, argv);
         return VM_STATUS_SUCCESS;

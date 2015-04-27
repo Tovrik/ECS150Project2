@@ -127,8 +127,8 @@ TVMStatus VMFileClose(int filedescriptor) {
     }
 }
 
-// void MachineFileOpen(const char *filename, int flags, int mode, TMachineFileCallback callback, void *calldata);
 
+// void MachineFileOpen(const char *filename, int flags, int mode, TMachineFileCallback callback, void *calldata);
 
 // TVMStatus VMFileOpen(const char *filename, int flags, int mode, int *filedescriptor) {
 //     if (filename == NULL || filedescriptor == NULL) {
@@ -194,8 +194,10 @@ TVMStatus VMStart(int tickms, int machinetickms, int argc, char *argv[]) { //The
 }
 
 TVMStatus VMThreadActivate(TVMThreadID thread) {
+    MachineSuspendSignals(TMachineSignalStateRef sigstate);
 
 
+    MachineResumeSignals(TMachineSignalStateRef sigstate);
 }
 
 TVMStatus VMThreadCreate(TVMThreadEntry entry, void *param, TVMMemorySize memsize, TVMThreadPriority prio, TVMThreadIDRef tid) {
@@ -203,6 +205,11 @@ TVMStatus VMThreadCreate(TVMThreadEntry entry, void *param, TVMMemorySize memsiz
     TCB *thread = new TCB(tid, VM_THREAD_STATE_DEAD, prio, memsize, ____, entry, param, ____);
     thread_vector.push_back(thread);
     determine_queue(thread);
+    MachineResumeSignals(TMachineSignalStateRef sigstate);
+}
+
+TVMStatus VMThreadDelete(TVMThreadID thread) {
+
 }
 
 TVMStatus VMThreadID(TVMThreadIDRef threadref) {
@@ -223,4 +230,10 @@ TVMStatus VMThreadSleep(TVMTick tick){
         return VM_STATUS_SUCCESS;
     }
 }
+
+TVMStatus VMThreadTerminate(TVMThreadID thread) {
+    current_thread->thread_state = VM_THREAD_STATE_DEAD;
+    
+}
+
 } // end extern C

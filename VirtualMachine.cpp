@@ -9,27 +9,40 @@ using namespace std;
 
 extern "C" {
 ///////////////////////// TCB Class Definition ///////////////////////////
-enum state_t { dead, ready, waiting, running };
-enum priority_t { low, medium, high };
-
 class TCB
 {
 public:
-    TCB();
+    TCB(TVMThreadID id, TVMThreadState thread_state, TVMThreadPriority thread_priority, TVMMemorySize stack_size, uint8_t *stack_base, TVMThreadEntry entry_point, void *entry_params, TVMTick ticks_remaining) :
+        id(id),
+        thread_state(thread_state),
+        thread_priority(thread_priority),
+        stack_size(stack_size),
+        stack_base(stack_base),
+        entry_point(entry_point),
+        entry_params(entry_params),
+        ticks_remaining(ticks_remaining) {}
     ~TCB();
 
-    int id;
-    state_t thread_state;
-    priority_t thread_priority;
-    // mutex_info, stack_size, stack_base, entry_point, entry_params, SMachineContext
-    int ticks_remaining;
+    TVMThreadID id;
+    TVMThreadState thread_state;
+    TVMThreadPriority thread_priority;
+    TVMMemorySize stack_size;
+    uint8_t *stack_base;
+    TVMThreadEntry entry_point;
+    void *entry_params;
+    TVMTick ticks_remaining;
+    SMachineContext // for the context to switch to/from the thread
+
+// Possibly need something to hold file return type
+// Possibly hold a pointer or ID of mutex waiting on
+// Possibly hold a list of held mutexes
 };
 
 ///////////////////////// Globals ///////////////////////////
 volatile int timer;
 vector<TCB*> thread_vector;
 queue<TCB*> low_priority_queue;
-queue<TCB*> medium_priority_queue;
+queue<TCB*> normal_priority_queue;
 queue<TCB*> high_priority_queue;
 TCB* current_thread;
 
@@ -37,10 +50,28 @@ TCB* current_thread;
 TVMMainEntry VMLoadModule(const char *module);
 
 ///////////////////////// Utilities ///////////////////////////
+void determine_queue(TCB* thread) {
+    if (thread->thread_priority == VM_THREAD_PRIORITY_LOW) {
+        low_priority_queue.push(thread); 
+    }
+    else if (thread->thread_priority == VM_THREAD_PRIORITY_NORMAL) {
+        normal_priority_queue.push(thread); 
+    }
+    else if (thread->thread_priority == VM_THREAD_PRIORITY_HIGH) {
+        high_priority_queue.push(thread); 
+    }
+}
+
 void scheduler_action(queue<TCB*> & Q) {
+    // set current thread to ready state
     current_thread->thread_state = ready;
+    // STILL NEED TO PUSH CURRENT THREAD TO END OF RESPECTIVE QUEUE
+    // MachineContextSwitch(mcntxold,mcntxnew), old = current, new = next = Q.front()
+    MachineContextSwitch(current_thread,Q.front();
+    // set current to next and remove from Q
     current_thread = Q.front();
     Q.pop();
+    // set current to running
     current_thread->thread_state = running;
 }
 
@@ -48,8 +79,8 @@ void scheduler() {
     if (!high_priority_queue.empty()) {
         scheduler_action(high_priority_queue);
     }
-    else if (!medium_priority_queue.empty()) {
-        scheduler_action(medium_priority_queue);
+    else if (!normal_priority_queue.empty()) {
+        scheduler_action(normal_priority_queue);
     }
     else if (!low_priority_queue.empty()) {
         scheduler_action(low_priority_queue);
@@ -68,7 +99,7 @@ void update_thread_ticks () {
                     high_priority_queue.push(thread_vector[i]);
                     break;
                 case medium:
-                    medium_priority_queue.push(thread_vector[i]);
+                    normal_priority_queue.push(thread_vector[i]);
                     break;
                 case low:
                     low_priority_queue.push(thread_vector[i]);
@@ -160,6 +191,22 @@ TVMStatus VMStart(int tickms, int machinetickms, int argc, char *argv[]) { //The
     else {
         return VM_STATUS_FAILURE;
     }
+}
+
+TVMStatus VMThreadActivate(TVMThreadID thread) {
+
+
+}
+
+TVMStatus VMThreadCreate(TVMThreadEntry entry, void *param, TVMMemorySize memsize, TVMThreadPriority prio, TVMThreadIDRef tid) {
+    MachineSuspendSignals(TMachineSignalStateRef sigstate);
+    TCB *thread = new TCB(tid, VM_THREAD_STATE_DEAD, prio, memsize, ____, entry, param, ____);
+    thread_vector.push_back(thread);
+    determine_queue(thread);
+}
+
+TVMStatus VMThreadID(TVMThreadIDRef threadref) {
+
 }
 
 // if tick == VM_TIMEOUT_INFINITE the current thread yields to the next ready thread. It basically 

@@ -216,9 +216,10 @@ TVMStatus VMThreadActivate(TVMThreadID thread) {
     }
     else {
         MachineSuspendSignals(sigstate);
-        // MachineContextCreate(&actual_thread.machine_context_ref, void (*entry)(void *), void *param, actual_thread->stack_base, actual_thread->stack_size);
+        MachineContextCreate(&actual_thread.machine_context_ref, SkeletonEntry, NULL, actual_thread->stack_base, actual_thread->stack_size);
         actual_thread->thread_state = VM_THREAD_STATE_READY;
         determine_queue_and_push(thread_vector[thread]);
+        scheduler();
         MachineResumeSignals(sigstate);
     }
 }

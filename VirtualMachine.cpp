@@ -199,7 +199,8 @@ TVMStatus VMStart(int tickms, int machinetickms, int argc, char *argv[]) { //The
 TVMStatus VMThreadActivate(TVMThreadID thread) {
     MachineSuspendSignals(sigstate);
 
-
+    thread->thread_state = VM_THREAD_STATE_READY;
+    determine_queue_and_push(thread);
     MachineResumeSignals(sigstate);
 }
 
@@ -212,7 +213,6 @@ TVMStatus VMThreadCreate(TVMThreadEntry entry, void *param, TVMMemorySize memsiz
         TCB *thread = new TCB(tid, VM_THREAD_STATE_DEAD, prio, memsize, entry, param, 0);
         thread->id = vector.size();
         thread_vector.push_back(thread);
-        determine_queue_and_push(thread);
         MachineResumeSignals(sigstate);
         return VM_STATUS_SUCCESS;
     }

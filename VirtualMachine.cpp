@@ -12,15 +12,16 @@ extern "C" {
 class TCB
 {
 public:
-    TCB(TVMThreadID id, TVMThreadState thread_state, TVMThreadPriority thread_priority, TVMMemorySize stack_size, uint8_t *stack_base, TVMThreadEntry entry_point, void *entry_params, TVMTick ticks_remaining) :
+    TCB(TVMThreadID id, TVMThreadState thread_state, TVMThreadPriority thread_priority, TVMMemorySize stack_size, TVMThreadEntry entry_point, void *entry_params, TVMTick ticks_remaining) :
         id(id),
         thread_state(thread_state),
         thread_priority(thread_priority),
         stack_size(stack_size),
-        stack_base(stack_base),
         entry_point(entry_point),
         entry_params(entry_params),
-        ticks_remaining(ticks_remaining) {}
+        ticks_remaining(ticks_remaining) {
+            stack_base = new uint8_t[stack_size];
+        }
     ~TCB();
 
     TVMThreadID id;
@@ -39,18 +40,20 @@ public:
 };
 
 ///////////////////////// Globals ///////////////////////////
-volatile int timer;
 vector<TCB*> thread_vector;
 queue<TCB*> low_priority_queue;
 queue<TCB*> normal_priority_queue;
 queue<TCB*> high_priority_queue;
 TCB* current_thread;
 
+volatile int timer;
+TMachineSignalStateRef sigstate;
+
 ///////////////////////// Function Prototypes ///////////////////////////
 TVMMainEntry VMLoadModule(const char *module);
 
 ///////////////////////// Utilities ///////////////////////////
-void determine_queue(TCB* thread) {
+void determine_queue_and_push(TCB* thread) {
     if (thread->thread_priority == VM_THREAD_PRIORITY_LOW) {
         low_priority_queue.push(thread); 
     }
@@ -194,18 +197,25 @@ TVMStatus VMStart(int tickms, int machinetickms, int argc, char *argv[]) { //The
 }
 
 TVMStatus VMThreadActivate(TVMThreadID thread) {
-    MachineSuspendSignals(TMachineSignalStateRef sigstate);
+    MachineSuspendSignals(sigstate);
 
 
-    MachineResumeSignals(TMachineSignalStateRef sigstate);
+    MachineResumeSignals(sigstate);
 }
 
 TVMStatus VMThreadCreate(TVMThreadEntry entry, void *param, TVMMemorySize memsize, TVMThreadPriority prio, TVMThreadIDRef tid) {
-    MachineSuspendSignals(TMachineSignalStateRef sigstate);
-    TCB *thread = new TCB(tid, VM_THREAD_STATE_DEAD, prio, memsize, ____, entry, param, ____);
-    thread_vector.push_back(thread);
-    determine_queue(thread);
-    MachineResumeSignals(TMachineSignalStateRef sigstate);
+    if (entry == NULL || tid == NULL) {
+        return VM_STATUS_ERROR_INVALID_PARAMETER;
+    }
+    else {
+        MachineSuspendSignals(sigstate);
+        TCB *thread = new TCB(tid, VM_THREAD_STATE_DEAD, prio, memsize, entry, param, 0);
+        thread->id = vector.size();
+        thread_vector.push_back(thread);
+        determine_queue_and_push(thread);
+        MachineResumeSignals(sigstate);
+        return VM_STATUS_SUCCESS;
+    }
 }
 
 TVMStatus VMThreadDelete(TVMThreadID thread) {
@@ -233,7 +243,7 @@ TVMStatus VMThreadSleep(TVMTick tick){
 
 TVMStatus VMThreadTerminate(TVMThreadID thread) {
     current_thread->thread_state = VM_THREAD_STATE_DEAD;
-    
+
 }
 
 } // end extern C

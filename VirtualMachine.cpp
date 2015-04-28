@@ -12,7 +12,7 @@ extern "C" {
 class TCB
 {
 public:
-    TCB(TVMThreadID id, TVMThreadState thread_state, TVMThreadPriority thread_priority, TVMMemorySize stack_size, TVMThreadEntry entry_point, void *entry_params, TVMTick ticks_remaining) :
+    TCB(TVMThreadIDRef id, TVMThreadState thread_state, TVMThreadPriority thread_priority, TVMMemorySize stack_size, TVMThreadEntry entry_point, void *entry_params, TVMTick ticks_remaining) :
         id(id),
         thread_state(thread_state),
         thread_priority(thread_priority),
@@ -24,7 +24,7 @@ public:
         }
     ~TCB();
 
-    TVMThreadID id;
+    TVMThreadIDRef id;
     TVMThreadState thread_state;
     TVMThreadPriority thread_priority;
     TVMMemorySize stack_size;
@@ -32,7 +32,7 @@ public:
     TVMThreadEntry entry_point;
     void *entry_params;
     TVMTick ticks_remaining;
-    SMachineContext // for the context to switch to/from the thread
+    SMachineContextRef machine_context_ref; // for the context to switch to/from the thread
 
 // Possibly need something to hold file return type
 // Possibly hold a pointer or ID of mutex waiting on
@@ -67,15 +67,15 @@ void determine_queue_and_push(TCB* thread) {
 
 void scheduler_action(queue<TCB*> & Q) {
     // set current thread to ready state
-    current_thread->thread_state = ready;
+    current_thread->thread_state = VM_THREAD_STATE_READY;
     // STILL NEED TO PUSH CURRENT THREAD TO END OF RESPECTIVE QUEUE
     // MachineContextSwitch(mcntxold,mcntxnew), old = current, new = next = Q.front()
-    MachineContextSwitch(current_thread,Q.front();
+    MachineContextSwitch(current_thread->machine_context_ref, Q.front()->machine_context_ref);
     // set current to next and remove from Q
     current_thread = Q.front();
     Q.pop();
     // set current to running
-    current_thread->thread_state = running;
+    current_thread->thread_state = VM_THREAD_STATE_RUNNING;
 }
 
 void scheduler() {
@@ -91,20 +91,20 @@ void scheduler() {
 }
 
 void update_thread_ticks () {
-    for (uint i = 0; i < thread_vector.size(); ++i) {
+    for (int i = 0; i < thread_vector.size(); ++i) {
         if (thread_vector[i]->ticks_remaining > 0) {
             thread_vector[i]->ticks_remaining--;
         } 
         if (thread_vector[i]->ticks_remaining ==  0) {
-            thread_vector[i]->thread_state = ready;
+            thread_vector[i]->thread_state = VM_THREAD_STATE_READY;
             switch (thread_vector[i]->thread_priority) {
-                case high:
+                case VM_THREAD_PRIORITY_HIGH :
                     high_priority_queue.push(thread_vector[i]);
                     break;
-                case medium:
+                case VM_THREAD_PRIORITY_NORMAL:
                     normal_priority_queue.push(thread_vector[i]);
                     break;
-                case low:
+                case VM_THREAD_PRIORITY_LOW:
                     low_priority_queue.push(thread_vector[i]);
                     break;
             }
@@ -197,11 +197,24 @@ TVMStatus VMStart(int tickms, int machinetickms, int argc, char *argv[]) { //The
 }
 
 TVMStatus VMThreadActivate(TVMThreadID thread) {
-    MachineSuspendSignals(sigstate);
-
-    thread->thread_state = VM_THREAD_STATE_READY;
-    determine_queue_and_push(thread);
-    MachineResumeSignals(sigstate);
+    // add status checking
+    try {
+        thread_vector.at(thread);
+    }
+    catch (out_of_range err) {
+        VM_STATUS_ERROR_INVALID_ID;
+    }
+    TCB* actual_thread = thread_vector[thread];
+    if (actual_thread->thread_state == VM_THREAD_STATE_DEAD) {
+        VM_STATUS_ERROR_INVALID_STATE;
+    }
+    else {
+        MachineSuspendSignals(sigstate);
+        // MachineContextCreate(&actual_thread.machine_context_ref, void (*entry)(void *), void *param, actual_thread->stack_base, actual_thread->stack_size);
+        actual_thread->thread_state = VM_THREAD_STATE_READY;
+        determine_queue_and_push(thread_vector[thread]);
+        MachineResumeSignals(sigstate);
+    }
 }
 
 TVMStatus VMThreadCreate(TVMThreadEntry entry, void *param, TVMMemorySize memsize, TVMThreadPriority prio, TVMThreadIDRef tid) {
@@ -210,9 +223,9 @@ TVMStatus VMThreadCreate(TVMThreadEntry entry, void *param, TVMMemorySize memsiz
     }
     else {
         MachineSuspendSignals(sigstate);
-        TCB *thread = new TCB(tid, VM_THREAD_STATE_DEAD, prio, memsize, entry, param, 0);
-        thread->id = vector.size();
-        thread_vector.push_back(thread);
+        TCB *new_thread = new TCB(tid, VM_THREAD_STATE_DEAD, prio, memsize, entry, param, 0);
+        *(new_thread->id) = (TVMThreadID)thread_vector.size();
+        thread_vector.push_back(new_thread);
         MachineResumeSignals(sigstate);
         return VM_STATUS_SUCCESS;
     }

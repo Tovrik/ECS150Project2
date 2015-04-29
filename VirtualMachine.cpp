@@ -55,13 +55,13 @@ TVMMainEntry VMLoadModule(const char *module);
 ///////////////////////// Utilities ///////////////////////////
 void determine_queue_and_push(TCB* thread) {
     if (thread->thread_priority == VM_THREAD_PRIORITY_LOW) {
-        low_priority_queue.push(thread); 
+        low_priority_queue.push(thread);
     }
     else if (thread->thread_priority == VM_THREAD_PRIORITY_NORMAL) {
-        normal_priority_queue.push(thread); 
+        normal_priority_queue.push(thread);
     }
     else if (thread->thread_priority == VM_THREAD_PRIORITY_HIGH) {
-        high_priority_queue.push(thread); 
+        high_priority_queue.push(thread);
     }
 }
 
@@ -94,7 +94,7 @@ void update_thread_ticks () {
     for (int i = 0; i < thread_vector.size(); ++i) {
         if (thread_vector[i]->ticks_remaining > 0) {
             thread_vector[i]->ticks_remaining--;
-        } 
+        }
         if (thread_vector[i]->ticks_remaining ==  0) {
             thread_vector[i]->thread_state = VM_THREAD_STATE_READY;
             switch (thread_vector[i]->thread_priority) {
@@ -118,6 +118,12 @@ void update_thread_ticks () {
 // for ref: typedef void (*TMachineAlarmCallback)(void *calldata);
 void timerDecrement(void *calldata) {
     timer -= 1;
+}
+
+void SkeletonEntry(void *param){
+    //get the entry function and param that you need to call
+    this->entry_point(entry_params);
+    VMTerminate(*(this->id)); // This will allow you to gain control back if the ActualThreadEntry returns
 }
 
 ///////////////////////// VM Functions ///////////////////////////
@@ -210,7 +216,7 @@ TVMStatus VMThreadActivate(TVMThreadID thread) {
     }
     else {
         MachineSuspendSignals(sigstate);
-        // MachineContextCreate(&actual_thread.machine_context_ref, void (*entry)(void *), void *param, actual_thread->stack_base, actual_thread->stack_size);
+        MachineContextCreate(&actual_thread.machine_context_ref, SkeletonEntry, NULL, actual_thread->stack_base, actual_thread->stack_size);
         actual_thread->thread_state = VM_THREAD_STATE_READY;
         determine_queue_and_push(thread_vector[thread]);
         scheduler();
@@ -240,8 +246,8 @@ TVMStatus VMThreadID(TVMThreadIDRef threadref) {
 
 }
 
-// if tick == VM_TIMEOUT_INFINITE the current thread yields to the next ready thread. It basically 
-// goes to the end of its ready queue. The processing quantum is the amount of time that each thread 
+// if tick == VM_TIMEOUT_INFINITE the current thread yields to the next ready thread. It basically
+// goes to the end of its ready queue. The processing quantum is the amount of time that each thread
 // (or process) gets for its time slice. You can assume it is one tick.
 TVMStatus VMThreadSleep(TVMTick tick){
     if (tick == VM_TIMEOUT_INFINITE) {

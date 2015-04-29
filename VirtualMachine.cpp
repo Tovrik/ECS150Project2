@@ -66,9 +66,11 @@ void determine_queue_and_push(TCB* thread) {
 }
 
 void scheduler_action(queue<TCB*> & Q) {
-    // set current thread to ready state
-    current_thread->thread_state = VM_THREAD_STATE_READY;
-    // STILL NEED TO PUSH CURRENT THREAD TO END OF RESPECTIVE QUEUE
+    // set current thread to ready state if it was running
+    if (current_thread->thread_state == VM_THREAD_STATE_RUNNING) {
+        current_thread->thread_state = VM_THREAD_STATE_READY;
+    }   
+    determine_queue_and_push(current_thread);
     // MachineContextSwitch(mcntxold,mcntxnew), old = current, new = next = Q.front()
     MachineContextSwitch(current_thread->machine_context_ref, Q.front()->machine_context_ref);
     // set current to next and remove from Q
@@ -90,34 +92,19 @@ void scheduler() {
     }
 }
 
-void update_thread_ticks () {
+///////////////////////// Callbacks ///////////////////////////
+// for ref: typedef void (*TMachineAlarmCallback)(void *calldata);
+void timerDecrement(void *calldata) {
+    // timer -= 1;
+    // decrements ticks for each sleeping thread
     for (int i = 0; i < thread_vector.size(); ++i) {
         if (thread_vector[i]->ticks_remaining > 0) {
             thread_vector[i]->ticks_remaining--;
         }
-        if (thread_vector[i]->ticks_remaining ==  0) {
+        if (thread_vector[i]->ticks_remaining ==  0 && thread_vector[i]->thread_state == VM_THREAD_STATE_WAITING) {
             thread_vector[i]->thread_state = VM_THREAD_STATE_READY;
-            switch (thread_vector[i]->thread_priority) {
-                case VM_THREAD_PRIORITY_HIGH :
-                    high_priority_queue.push(thread_vector[i]);
-                    break;
-                case VM_THREAD_PRIORITY_NORMAL:
-                    normal_priority_queue.push(thread_vector[i]);
-                    break;
-                case VM_THREAD_PRIORITY_LOW:
-                    low_priority_queue.push(thread_vector[i]);
-                    break;
-            }
-            // sets it to -1
-            thread_vector[i]->ticks_remaining--;
+            determine_queue_and_push(thread_vector[i]);
         }
-    }
-}
-
-///////////////////////// Callbacks ///////////////////////////
-// for ref: typedef void (*TMachineAlarmCallback)(void *calldata);
-void timerDecrement(void *calldata) {
-    timer -= 1;
 }
 
 void SkeletonEntry(void *param){
@@ -203,7 +190,6 @@ TVMStatus VMStart(int tickms, int machinetickms, int argc, char *argv[]) { //The
 }
 
 TVMStatus VMThreadActivate(TVMThreadID thread) {
-    // add status checking
     try {
         thread_vector.at(thread);
     }
@@ -218,7 +204,7 @@ TVMStatus VMThreadActivate(TVMThreadID thread) {
         MachineSuspendSignals(sigstate);
         MachineContextCreate(&actual_thread.machine_context_ref, SkeletonEntry, NULL, actual_thread->stack_base, actual_thread->stack_size);
         actual_thread->thread_state = VM_THREAD_STATE_READY;
-        determine_queue_and_push(thread_vector[thread]);
+        determine_queue_and_push(actual_thread);
         scheduler();
         MachineResumeSignals(sigstate);
     }
@@ -230,7 +216,7 @@ TVMStatus VMThreadCreate(TVMThreadEntry entry, void *param, TVMMemorySize memsiz
     }
     else {
         MachineSuspendSignals(sigstate);
-        TCB *new_thread = new TCB(tid, VM_THREAD_STATE_DEAD, prio, memsize, entry, param, 0);
+        TCB *new_thread = new TCB(tid, VM_THREAD_STATE_DEAD, prio, memsize, entry, param, -1);
         *(new_thread->id) = (TVMThreadID)thread_vector.size();
         thread_vector.push_back(new_thread);
         MachineResumeSignals(sigstate);
@@ -254,9 +240,12 @@ TVMStatus VMThreadSleep(TVMTick tick){
         return VM_STATUS_ERROR_INVALID_PARAMETER;
     }
     else {
-        timer = tick;
+        current_thread->ticks_remaining = tick;
+        current_thread->thread_state = VM_THREAD_STATE_WAITING;
+        scheduler();
+        // timer = tick;
         //sleep(tick); // NOT SUPPOSED TO USE SLEEP
-        while (timer != 0);
+        // while (timer != 0);
         return VM_STATUS_SUCCESS;
     }
 }

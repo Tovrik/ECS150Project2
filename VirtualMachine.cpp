@@ -3,7 +3,7 @@
 #include "VirtualMachine.h"
 #include "Machine.h"
 #include <vector>
-#include <queue>
+#include <deque>
 
 using namespace std;
 
@@ -41,9 +41,9 @@ public:
 
 ///////////////////////// Globals ///////////////////////////
 vector<TCB*> thread_vector;
-queue<TCB*> low_priority_queue;
-queue<TCB*> normal_priority_queue;
-queue<TCB*> high_priority_queue;
+deque<TCB*> low_priority_queue;
+deque<TCB*> normal_priority_queue;
+deque<TCB*> high_priority_queue;
 TCB* current_thread;
 
 volatile int timer;
@@ -53,19 +53,41 @@ TMachineSignalStateRef sigstate;
 TVMMainEntry VMLoadModule(const char *module);
 
 ///////////////////////// Utilities ///////////////////////////
-void determine_queue_and_push(TCB* thread) {
-    if (thread->thread_priority == VM_THREAD_PRIORITY_LOW) {
-        low_priority_queue.push(thread);
-    }
-    else if (thread->thread_priority == VM_THREAD_PRIORITY_NORMAL) {
-        normal_priority_queue.push(thread);
-    }
-    else if (thread->thread_priority == VM_THREAD_PRIORITY_HIGH) {
-        high_priority_queue.push(thread);
+void actual_removal(TCB* thread, deque<TCB*> &Q) {
+    for (deque<TCB*>::iterator it=Q.begin(); it != Q.end(); ++it)
+    {
+        if (*it == thread) {
+            Q.erase(it);
+            break;
+        }
     }
 }
 
-void scheduler_action(queue<TCB*> & Q) {
+void determine_queue_and_push(TCB* thread) {
+    if (thread->thread_priority == VM_THREAD_PRIORITY_LOW) {
+        low_priority_queue.push_back(thread);
+    }
+    else if (thread->thread_priority == VM_THREAD_PRIORITY_NORMAL) {
+        normal_priority_queue.push_back(thread);
+    }
+    else if (thread->thread_priority == VM_THREAD_PRIORITY_HIGH) {
+        high_priority_queue.push_back(thread);
+    }
+}
+
+void determine_queue_and_remove(TCB *thread) {
+    if (thread->thread_priority == VM_THREAD_PRIORITY_LOW) {
+        actual_removal(thread, low_priority_queue);
+    }
+    else if (thread->thread_priority == VM_THREAD_PRIORITY_NORMAL) {
+        actual_removal(thread, normal_priority_queue);
+    }
+    else if (thread->thread_priority == VM_THREAD_PRIORITY_HIGH) {
+        actual_removal(thread, high_priority_queue);
+    }
+}
+
+void scheduler_action(deque<TCB*> &Q) {
     // set current thread to ready state if it was running
     if (current_thread->thread_state == VM_THREAD_STATE_RUNNING) {
         current_thread->thread_state = VM_THREAD_STATE_READY;
@@ -75,7 +97,7 @@ void scheduler_action(queue<TCB*> & Q) {
     MachineContextSwitch(current_thread->machine_context_ref, Q.front()->machine_context_ref);
     // set current to next and remove from Q
     current_thread = Q.front();
-    Q.pop();
+    Q.pop_front();
     // set current to running
     current_thread->thread_state = VM_THREAD_STATE_RUNNING;
 }
@@ -192,18 +214,20 @@ TVMStatus VMStart(int tickms, int machinetickms, int argc, char *argv[]) { //The
 }
 
 TVMStatus VMThreadActivate(TVMThreadID thread) {
+    MachineSuspendSignals(sigstate);
     try {
         thread_vector.at(thread);
     }
     catch (out_of_range err) {
-        VM_STATUS_ERROR_INVALID_ID;
+        MachineResumeSignals(sigstate);
+        return VM_STATUS_ERROR_INVALID_ID;
     }
     TCB* actual_thread = thread_vector[thread];
     if (actual_thread->thread_state == VM_THREAD_STATE_DEAD) {
-        VM_STATUS_ERROR_INVALID_STATE;
+        MachineResumeSignals(sigstate);
+        return VM_STATUS_ERROR_INVALID_STATE;
     }
     else {
-        MachineSuspendSignals(sigstate);
         MachineContextCreate(&actual_thread.machine_context_ref, SkeletonEntry, NULL, actual_thread->stack_base, actual_thread->stack_size);
         actual_thread->thread_state = VM_THREAD_STATE_READY;
         determine_queue_and_push(actual_thread);
@@ -213,11 +237,12 @@ TVMStatus VMThreadActivate(TVMThreadID thread) {
 }
 
 TVMStatus VMThreadCreate(TVMThreadEntry entry, void *param, TVMMemorySize memsize, TVMThreadPriority prio, TVMThreadIDRef tid) {
+    MachineSuspendSignals(sigstate);
     if (entry == NULL || tid == NULL) {
+        MachineResumeSignals(sigstate);
         return VM_STATUS_ERROR_INVALID_PARAMETER;
     }
     else {
-        MachineSuspendSignals(sigstate);
         TCB *new_thread = new TCB(tid, VM_THREAD_STATE_DEAD, prio, memsize, entry, param, -1);
         *(new_thread->id) = (TVMThreadID)thread_vector.size();
         thread_vector.push_back(new_thread);
@@ -227,18 +252,53 @@ TVMStatus VMThreadCreate(TVMThreadEntry entry, void *param, TVMMemorySize memsiz
 }
 
 TVMStatus VMThreadDelete(TVMThreadID thread) {
-
+    MachineSuspendSignals(sigstate);
+    try {
+        thread_vector.at(thread);
+    }
+    catch (out_of_range err) {
+        MachineResumeSignals(sigstate);
+        return VM_STATUS_ERROR_INVALID_ID;
+    }
+    if (thread_vector[thread]->thread_state == VM_THREAD_STATE_DEAD) {
+        MachineResumeSignals(sigstate);
+        return VM_STATUS_ERROR_INVALID_STATE;
+    }
+    else {
+        delete thread_vector[thread];
+        thread_vector[thread] = NULL;
+        MachineResumeSignals(sigstate);
+        return VM_STATUS_SUCCESS;
+    }
 }
 
 TVMStatus VMThreadID(TVMThreadIDRef threadref) {
-
+    MachineSuspendSignals(sigstate);
+    try {
+        thread_vector.at(*threadref);
+    }
+    catch (out_of_range err) {
+        MachineResumeSignals(sigstate);
+        return VM_STATUS_ERROR_INVALID_ID;
+    }
+    if (threadref == NULL) {
+        MachineResumeSignals(sigstate);
+        return VM_STATUS_ERROR_INVALID_PARAMETER;
+    }
+    else {
+        threadref = current_thread->id;
+        MachineResumeSignals(sigstate);
+        return VM_STATUS_SUCCESS;
+    }
 }
 
 // if tick == VM_TIMEOUT_INFINITE the current thread yields to the next ready thread. It basically
 // goes to the end of its ready queue. The processing quantum is the amount of time that each thread
 // (or process) gets for its time slice. You can assume it is one tick.
 TVMStatus VMThreadSleep(TVMTick tick){
+    MachineSuspendSignals(sigstate);
     if (tick == VM_TIMEOUT_INFINITE) {
+        MachineResumeSignals(sigstate);
         return VM_STATUS_ERROR_INVALID_PARAMETER;
     }
     else {
@@ -248,13 +308,30 @@ TVMStatus VMThreadSleep(TVMTick tick){
         // timer = tick;
         //sleep(tick); // NOT SUPPOSED TO USE SLEEP
         // while (timer != 0);
+        MachineResumeSignals(sigstate);
         return VM_STATUS_SUCCESS;
     }
 }
 
 TVMStatus VMThreadTerminate(TVMThreadID thread) {
-    current_thread->thread_state = VM_THREAD_STATE_DEAD;
-
+    MachineSuspendSignals(sigstate);
+    try {
+        thread_vector.at(thread);
+    }
+    catch (out_of_range err) {
+        MachineResumeSignals(sigstate);
+        return VM_STATUS_ERROR_INVALID_ID;
+    }
+    if (thread_vector[thread]->thread_state == VM_THREAD_STATE_DEAD) {
+        MachineResumeSignals(sigstate);
+        return VM_STATUS_ERROR_INVALID_STATE;
+    }
+    else {
+        thread_vector[thread]->thread_state = VM_THREAD_STATE_DEAD;
+        determine_queue_and_remove(thread_vector[thread]);
+        MachineResumeSignals(sigstate);
+        return VM_STATUS_SUCCESS;
+    }
 }
 
 } // end extern C

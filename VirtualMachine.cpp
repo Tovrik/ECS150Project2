@@ -104,7 +104,9 @@ void timerDecrement(void *calldata) {
         if (thread_vector[i]->ticks_remaining ==  0 && thread_vector[i]->thread_state == VM_THREAD_STATE_WAITING) {
             thread_vector[i]->thread_state = VM_THREAD_STATE_READY;
             determine_queue_and_push(thread_vector[i]);
+            scheduler();
         }
+    }
 }
 
 void SkeletonEntry(void *param){

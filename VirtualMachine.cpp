@@ -171,51 +171,7 @@ void idleEntry(void *param) {
     while(1);
 }
 
-///////////////////////// VM Functions ///////////////////////////
-TVMStatus VMFileClose(int filedescriptor) {
-    if (close(filedescriptor) == 0) {
-        return VM_STATUS_SUCCESS;
-    }
-    else {
-        return VM_STATUS_FAILURE;
-    }
-}
-
-
-// void MachineFileOpen(const char *filename, int flags, int mode, TMachineFileCallback callback, void *calldata);
-
-// TVMStatus VMFileOpen(const char *filename, int flags, int mode, int *filedescriptor) {
-//     if (filename == NULL || filedescriptor == NULL) {
-//         return VM_STATUS_ERROR_INVALID_PARAMETER;
-//     }
-//     else {
-//         MachineFileOpen(filename, flags, mode, ___, ___);
-//         *filedescriptor = open(filename, flags, mode);
-//         if (*filedescriptor != -1) {
-//             return VM_STATUS_SUCCESS;
-//         }
-//         else {
-//             return VM_STATUS_FAILURE;
-//         }
-//     }
-// }
-
-// void MachineFileWrite(int fd, void *data, int length, TMachineFileCallback callback, void *calldata);
-
-TVMStatus VMFileWrite(int filedescriptor, void *data, int *length) {
-    if (data == NULL || length == NULL) {
-        return VM_STATUS_ERROR_INVALID_PARAMETER;
-    }
-    else {
-        if (write(filedescriptor, (char *)data, *length) != -1) {
-            return VM_STATUS_SUCCESS;
-        }
-        else {
-            return VM_STATUS_FAILURE;
-        }
-    }
-}
-
+///////////////////////// VMThread Functions ///////////////////////////
 // VMStart
 // -Use typedef to define a function pointer and then create an instance/variable of that function pointer type
 // -Then set that variable equal to the address returned from VMLoadModule
@@ -357,6 +313,51 @@ TVMStatus VMThreadTerminate(TVMThreadID thread) {
         determine_queue_and_remove(thread_vector[thread]);
         scheduler();
         return VM_STATUS_SUCCESS;
+    }
+}
+
+///////////////////////// VMFile Functions ///////////////////////////
+TVMStatus VMFileClose(int filedescriptor) {
+    if (close(filedescriptor) == 0) {
+        return VM_STATUS_SUCCESS;
+    }
+    else {
+        return VM_STATUS_FAILURE;
+    }
+}
+
+
+// void MachineFileOpen(const char *filename, int flags, int mode, TMachineFileCallback callback, void *calldata);
+
+// TVMStatus VMFileOpen(const char *filename, int flags, int mode, int *filedescriptor) {
+//     if (filename == NULL || filedescriptor == NULL) {
+//         return VM_STATUS_ERROR_INVALID_PARAMETER;
+//     }
+//     else {
+//         MachineFileOpen(filename, flags, mode, ___, ___);
+//         *filedescriptor = open(filename, flags, mode);
+//         if (*filedescriptor != -1) {
+//             return VM_STATUS_SUCCESS;
+//         }
+//         else {
+//             return VM_STATUS_FAILURE;
+//         }
+//     }
+// }
+
+// void MachineFileWrite(int fd, void *data, int length, TMachineFileCallback callback, void *calldata);
+
+TVMStatus VMFileWrite(int filedescriptor, void *data, int *length) {
+    if (data == NULL || length == NULL) {
+        return VM_STATUS_ERROR_INVALID_PARAMETER;
+    }
+    else {
+        if (write(filedescriptor, (char *)data, *length) != -1) {
+            return VM_STATUS_SUCCESS;
+        }
+        else {
+            return VM_STATUS_FAILURE;
+        }
     }
 }
 

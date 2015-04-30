@@ -131,7 +131,7 @@ void scheduler() {
         TCB* temp = current_thread;
         current_thread = idle_thread;
         current_thread->thread_state = VM_THREAD_STATE_RUNNING;
-        MachineContextSwitch(&(temp->machine_context), &(current_thread->machine_context));
+        MachineContextSwitch(&(temp->machine_context), &(idle_thread->machine_context));
     }
 }
 
@@ -254,13 +254,6 @@ TVMStatus VMStart(int tickms, int machinetickms, int argc, char *argv[]) { //The
 
 TVMStatus VMThreadActivate(TVMThreadID thread) {
     MachineSuspendSignals(sigstate);
-    try {
-        thread_vector.at(thread);
-    }
-    catch (out_of_range err) {
-        MachineResumeSignals(sigstate);
-        return VM_STATUS_ERROR_INVALID_ID;
-    }
     TCB* actual_thread = thread_vector[thread];
     if (actual_thread->thread_state != VM_THREAD_STATE_DEAD) {
         MachineResumeSignals(sigstate);
@@ -294,13 +287,6 @@ TVMStatus VMThreadCreate(TVMThreadEntry entry, void *param, TVMMemorySize memsiz
 
 TVMStatus VMThreadDelete(TVMThreadID thread) {
     MachineSuspendSignals(sigstate);
-    try {
-        thread_vector.at(thread);
-    }
-    catch (out_of_range err) {
-        MachineResumeSignals(sigstate);
-        return VM_STATUS_ERROR_INVALID_ID;
-    }
     if (thread_vector[thread]->thread_state == VM_THREAD_STATE_DEAD) {
         MachineResumeSignals(sigstate);
         return VM_STATUS_ERROR_INVALID_STATE;
@@ -315,13 +301,6 @@ TVMStatus VMThreadDelete(TVMThreadID thread) {
 
 TVMStatus VMThreadID(TVMThreadIDRef threadref) {
     MachineSuspendSignals(sigstate);
-    try {
-        thread_vector.at(*threadref);
-    }
-    catch (out_of_range err) {
-        MachineResumeSignals(sigstate);
-        return VM_STATUS_ERROR_INVALID_ID;
-    }
     if (threadref == NULL) {
         MachineResumeSignals(sigstate);
         return VM_STATUS_ERROR_INVALID_PARAMETER;
@@ -337,9 +316,9 @@ TVMStatus VMThreadID(TVMThreadIDRef threadref) {
 // goes to the end of its ready queue. The processing quantum is the amount of time that each thread
 // (or process) gets for its time slice. You can assume it is one tick.
 TVMStatus VMThreadSleep(TVMTick tick){
-    MachineSuspendSignals(sigstate);
+    // MachineSuspendSignals(sigstate);
     if (tick == VM_TIMEOUT_INFINITE) {
-        MachineResumeSignals(sigstate);
+        // MachineResumeSignals(sigstate);
         return VM_STATUS_ERROR_INVALID_PARAMETER;
     }
     else {
@@ -350,48 +329,28 @@ TVMStatus VMThreadSleep(TVMTick tick){
         // timer = tick;
         //sleep(tick); // NOT SUPPOSED TO USE SLEEP
         // while (timer != 0);
-        MachineResumeSignals(sigstate);
+        // MachineResumeSignals(sigstate);
         return VM_STATUS_SUCCESS;
     }
 }
 
 TVMStatus VMThreadState(TVMThreadID thread, TVMThreadStateRef stateref) {
-    MachineSuspendSignals(sigstate);
-    try {
-        thread_vector.at(thread);
-    }
-    catch (out_of_range err) {
-        MachineResumeSignals(sigstate);
-        return VM_STATUS_ERROR_INVALID_ID;
-    }
     if (stateref == NULL) {
-        MachineResumeSignals(sigstate);
         return VM_STATUS_ERROR_INVALID_PARAMETER;
     }
     else {
         stateref = &thread_vector[thread]->thread_state;
-        MachineResumeSignals(sigstate);
-        return VM_STATUS_SUCCESS;
+        return VM_STATUS_SUCCESfS;
     }
 }
 
 TVMStatus VMThreadTerminate(TVMThreadID thread) {
-    MachineSuspendSignals(sigstate);
-    try {
-        thread_vector.at(thread);
-    }
-    catch (out_of_range err) {
-        MachineResumeSignals(sigstate);
-        return VM_STATUS_ERROR_INVALID_ID;
-    }
     if (thread_vector[thread]->thread_state == VM_THREAD_STATE_DEAD) {
-        MachineResumeSignals(sigstate);
         return VM_STATUS_ERROR_INVALID_STATE;
     }
     else {
         thread_vector[thread]->thread_state = VM_THREAD_STATE_DEAD;
         determine_queue_and_remove(thread_vector[thread]);
-        MachineResumeSignals(sigstate);
         return VM_STATUS_SUCCESS;
     }
 }

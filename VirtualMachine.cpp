@@ -131,6 +131,7 @@ void scheduler() {
         TCB* temp = current_thread;
         current_thread = idle_thread;
         current_thread->thread_state = VM_THREAD_STATE_RUNNING;
+        thread_vector.push_back(current_thread);
         MachineContextSwitch(&(temp->machine_context), &(idle_thread->machine_context));
     }
 }
@@ -271,12 +272,12 @@ TVMStatus VMThreadActivate(TVMThreadID thread) {
 }
 
 TVMStatus VMThreadCreate(TVMThreadEntry entry, void *param, TVMMemorySize memsize, TVMThreadPriority prio, TVMThreadIDRef tid) {
-    MachineSuspendSignals(sigstate);
     if (entry == NULL || tid == NULL) {
-        MachineResumeSignals(sigstate);
         return VM_STATUS_ERROR_INVALID_PARAMETER;
     }
+
     else {
+        MachineSuspendSignals(sigstate);
         TCB *new_thread = new TCB(tid, VM_THREAD_STATE_DEAD, prio, memsize, entry, param, 0);
         *(new_thread->id) = (TVMThreadID)thread_vector.size();
         thread_vector.push_back(new_thread);
@@ -326,21 +327,20 @@ TVMStatus VMThreadSleep(TVMTick tick){
         current_thread->thread_state = VM_THREAD_STATE_WAITING;
         // determine_queue_and_push();
         scheduler();
-        // timer = tick;
-        //sleep(tick); // NOT SUPPOSED TO USE SLEEP
-        // while (timer != 0);
-        // MachineResumeSignals(sigstate);
         return VM_STATUS_SUCCESS;
     }
 }
 
 TVMStatus VMThreadState(TVMThreadID thread, TVMThreadStateRef stateref) {
+    if(thread == VM_THREAD_ID_INVALID) {
+        return VM_STATUS_ERROR_INVALID_ID;
+    }
     if (stateref == NULL) {
         return VM_STATUS_ERROR_INVALID_PARAMETER;
     }
     else {
-        stateref = &thread_vector[thread]->thread_state;
-        return VM_STATUS_SUCCESfS;
+        *stateref = thread_vector[thread]->thread_state;
+        return VM_STATUS_SUCCESS;
     }
 }
 

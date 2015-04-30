@@ -107,21 +107,26 @@ void scheduler_action(deque<TCB*> &Q) {
     // set current to running
     current_thread->thread_state = VM_THREAD_STATE_RUNNING;
     // MachineContextSwitch(mcntxold,mcntxnew), old = current, new = next = Q.front()
+    // VMPrint("switching context\n");
     MachineContextSwitch(&(temp->machine_context), &(current_thread->machine_context));
 }
 
 void scheduler() {
     if (!high_priority_queue.empty()) {
+        // VMPrint("high\n");
         scheduler_action(high_priority_queue);
     }
     else if (!normal_priority_queue.empty()) {
+        // VMPrint("normal\n");
         scheduler_action(normal_priority_queue);
     }
     else if (!low_priority_queue.empty()) {
+        // VMPrint("low\n");
         scheduler_action(low_priority_queue);
     }
     // schedule idle thread
     else {
+        // VMPrint("idle\n");
         if (current_thread->thread_state == VM_THREAD_STATE_READY) {
             determine_queue_and_push(current_thread);
         }
@@ -141,27 +146,25 @@ void scheduler() {
 void timerDecrement(void *calldata) {
     // timer -= 1;
     // decrements ticks for each sleeping thread
-    int shouldSchedule = 0;
-    for (int i = 0; i < sleep_vector.size(); ++i) {
+    for (int i = 0; i < sleep_vector.size(); i++) {
         // if (sleep_vector[i]->ticks_remaining > 0) {
             sleep_vector[i]->ticks_remaining--;
+            // VMPrint("%d\n",sleep_vector[i]->ticks_remaining);
             if (sleep_vector[i]->ticks_remaining ==  0) {
                 sleep_vector[i]->thread_state = VM_THREAD_STATE_READY;
                 determine_queue_and_push(sleep_vector[i]);
                 sleep_vector.erase(sleep_vector.begin() + i);
-                shouldSchedule = 1;
+                scheduler();
             }
         // }
-    }
-    if (shouldSchedule) {
-        scheduler();
     }
 }
 
 void SkeletonEntry(void *param) {
     MachineEnableSignals();
-    thread_vector[*((TVMThreadID*)param)]->entry_point(thread_vector[*((TVMThreadID*)param)]->entry_params);
-    VMThreadTerminate(*((TVMThreadID*)param)); // This will allow you to gain control back if the ActualThreadEntry returns
+    TCB* temp = (TCB*)param;
+    temp->entry_point(temp->entry_params);
+    VMThreadTerminate(*(temp->id)); // This will allow you to gain control back if the ActualThreadEntry returns
 }
 
 void idleEntry(void *param) {
@@ -262,22 +265,23 @@ TVMStatus VMThreadActivate(TVMThreadID thread) {
     }
     else {
         //void MachineContextCreate(SMachineContextRef mcntxref, void (*entry)(void *), void *param, void *stackaddr, size_t stacksize);
-        MachineContextCreate(&(actual_thread->machine_context), SkeletonEntry, &thread, actual_thread->stack_base, actual_thread->stack_size);
+        MachineContextCreate(&(actual_thread->machine_context), SkeletonEntry, actual_thread, actual_thread->stack_base, actual_thread->stack_size);
         actual_thread->thread_state = VM_THREAD_STATE_READY;
         determine_queue_and_push(actual_thread);
-        scheduler();
+        // scheduler();
         MachineResumeSignals(sigstate);
         return VM_STATUS_SUCCESS;
     }
 }
 
 TVMStatus VMThreadCreate(TVMThreadEntry entry, void *param, TVMMemorySize memsize, TVMThreadPriority prio, TVMThreadIDRef tid) {
+    MachineSuspendSignals(sigstate);
     if (entry == NULL || tid == NULL) {
+        MachineResumeSignals(sigstate);
         return VM_STATUS_ERROR_INVALID_PARAMETER;
     }
 
     else {
-        MachineSuspendSignals(sigstate);
         TCB *new_thread = new TCB(tid, VM_THREAD_STATE_DEAD, prio, memsize, entry, param, 0);
         *(new_thread->id) = (TVMThreadID)thread_vector.size();
         thread_vector.push_back(new_thread);
@@ -351,6 +355,7 @@ TVMStatus VMThreadTerminate(TVMThreadID thread) {
     else {
         thread_vector[thread]->thread_state = VM_THREAD_STATE_DEAD;
         determine_queue_and_remove(thread_vector[thread]);
+        scheduler();
         return VM_STATUS_SUCCESS;
     }
 }

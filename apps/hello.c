@@ -6,6 +6,6 @@ void VMMain(int argc, char *argv[]){
     for(Index = 0; Index < argc; Index++){
         VMPrint("%d = %s\n", Index, argv[Index]);
     }
-    VMPrint("Goodbye\n");    
+    VMPrint("Goodbye\n");
 }
 

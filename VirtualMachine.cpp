@@ -32,7 +32,7 @@ public:
     void *entry_params;
     TVMTick ticks_remaining;
     SMachineContext machine_context; // for the context to switch to/from the thread
-
+    int call_back_result;
 // Possibly need something to hold file return type
 // Possibly hold a pointer or ID of mutex waiting on
 // Possibly hold a list of held mutexes
@@ -169,6 +169,14 @@ void SkeletonEntry(void *param) {
 
 void idleEntry(void *param) {
     while(1);
+}
+
+void MachineCallback(void* param, int result) {
+    TCB* temp = (TCB*) param;
+    temp->thread_state = VM_THREAD_STATE_READY;
+    determine_queue_and_push(temp);
+    temp->call_back_result = result;
+    scheduler();
 }
 
 ///////////////////////// VMThread Functions ///////////////////////////
@@ -317,25 +325,36 @@ TVMStatus VMThreadTerminate(TVMThreadID thread) {
 }
 
 ///////////////////////// VMFile Functions ///////////////////////////
-TVMStatus VMFileClose(int filedescriptor) {
-    if (close(filedescriptor) == 0) {
-        return VM_STATUS_SUCCESS;
-    }
-    else {
-        return VM_STATUS_FAILURE;
-    }
-}
+// TVMStatus VMFileClose(int filedescriptor) {
+//     current_thread->thread_state = VM_THREAD_STATE_WAITING;
+//     TVMThreadIDRef close_thread = current_thread->id;
+//     MachineFileClose(filedescriptor, MachineCallback, current_thread);
+//     scheduler();
+
+//     if (thread_vector[*(close_thread)]->call_back_result != -1) {
+//         return VM_STATUS_SUCCESS;
+//     }
+//     else {
+//         return VM_STATUS_FAILURE;
+//     }
+// }
 
 
-// void MachineFileOpen(const char *filename, int flags, int mode, TMachineFileCallback callback, void *calldata);
+// // void MachineFileOpen(const char *filename, int flags, int mode, TMachineFileCallback callback, void *calldata);
 
 // TVMStatus VMFileOpen(const char *filename, int flags, int mode, int *filedescriptor) {
 //     if (filename == NULL || filedescriptor == NULL) {
 //         return VM_STATUS_ERROR_INVALID_PARAMETER;
 //     }
 //     else {
-//         MachineFileOpen(filename, flags, mode, ___, ___);
-//         *filedescriptor = open(filename, flags, mode);
+//         VMPrint("begin\n");
+//         current_thread->thread_state = VM_THREAD_STATE_WAITING;
+//         TVMThreadIDRef open_thread = current_thread->id;
+//         VMPrint("preopen\n");
+//         MachineFileOpen(filename, flags, mode, MachineCallback, open_thread);
+//         VMPrint("postopen\n");
+//         scheduler();
+//         *filedescriptor = thread_vector[*(open_thread)]->call_back_result;
 //         if (*filedescriptor != -1) {
 //             return VM_STATUS_SUCCESS;
 //         }
@@ -345,20 +364,53 @@ TVMStatus VMFileClose(int filedescriptor) {
 //     }
 // }
 
-// void MachineFileWrite(int fd, void *data, int length, TMachineFileCallback callback, void *calldata);
 
-TVMStatus VMFileWrite(int filedescriptor, void *data, int *length) {
-    if (data == NULL || length == NULL) {
-        return VM_STATUS_ERROR_INVALID_PARAMETER;
-    }
-    else {
-        if (write(filedescriptor, (char *)data, *length) != -1) {
-            return VM_STATUS_SUCCESS;
-        }
-        else {
-            return VM_STATUS_FAILURE;
-        }
-    }
-}
+// TVMStatus VMFileWrite(int filedescriptor, void *data, int *length) {
+//     if (data == NULL || length == NULL) {
+//         return VM_STATUS_ERROR_INVALID_PARAMETER;
+//     }
+//     current_thread->thread_state = VM_THREAD_STATE_WAITING;
+//     TVMThreadIDRef write_thread = current_thread->id;
+//     MachineFileWrite(filedescriptor, data, *length, MachineCallback, write_thread);
+//     scheduler();
+//     if(thread_vector[*(write_thread)]->call_back_result != -1) {
+//         return VM_STATUS_SUCCESS;
+//     }
+//     else {
+//         return VM_STATUS_FAILURE;
+//     }
+// }
+
+// TVMStatus VMFileRead(int filedescriptor, void *data, int *length) {
+//     if (data == NULL || length == NULL) {
+//         return VM_STATUS_ERROR_INVALID_PARAMETER;
+//     }
+//     current_thread->thread_state = VM_THREAD_STATE_WAITING;
+//     TVMThreadIDRef read_thread = current_thread->id;
+//     MachineFileRead(filedescriptor, data, *length, MachineCallback, read_thread);
+//     scheduler();
+//     *length = thread_vector[*(read_thread)]->call_back_result;
+//     if(*length > 0) {
+//         return VM_STATUS_SUCCESS;
+//     }
+//     else {
+//         return VM_STATUS_FAILURE;
+//     }
+// }
+
+// TVMStatus VMFileSeek(int filedescriptor, int offset, int whence, int *newoffset) {
+//     current_thread->thread_state = VM_THREAD_STATE_WAITING;
+//     TVMThreadIDRef seek_thread = current_thread->id;
+//     MachineFileSeek(filedescriptor, offset, whence, MachineCallback, seek_thread);
+//     scheduler();
+//     if(newoffset != NULL) {
+//         *newoffset = thread_vector[*(seek_thread)]->call_back_result;
+//         return VM_STATUS_SUCCESS;
+//     }
+//     else {
+//         return VM_STATUS_FAILURE;
+//     }
+
+// }
 
 } // end extern C

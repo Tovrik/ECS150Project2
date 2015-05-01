@@ -34,15 +34,26 @@ public:
     TVMTick ticks_remaining;
     SMachineContext machine_context; // for the context to switch to/from the thread
     int call_back_result;
+
 // Possibly need something to hold file return type
 // Possibly hold a pointer or ID of mutex waiting on
 // Possibly hold a list of held mutexes
+};
+
+///////////////////////// Structures ///////////////////////////
+typedef struct mutex{
+    TVMutexIDRef mutex_id_ref;
+    TVMThreadIDRef ownerid_ref;
+    list<TCB*> low_priority_list;
+    list<TCB*> normal_priority_list;
+    list<TCB*> high_priority_list;
 };
 
 ///////////////////////// Globals ///////////////////////////
 #define VM_THREAD_PRIORITY_IDLE                  ((TVMThreadPriority)0x00)
 
 vector<TCB*> thread_vector;
+list<TVMMutexIDRef> mutex_list;
 deque<TCB*> low_priority_queue;
 deque<TCB*> normal_priority_queue;
 deque<TCB*> high_priority_queue;
@@ -177,7 +188,9 @@ void MachineFileCallback(void* param, int result) {
     temp->thread_state = VM_THREAD_STATE_READY;
     determine_queue_and_push(temp);
     temp->call_back_result = result;
-    scheduler();
+    if ( (current_thread->thread_state == VM_THREAD_STATE_RUNNING && current_thread->thread_priority < temp->thread_priority) ||  current_thread->thread_state != VM_THREAD_STATE_RUNNING) {
+        scheduler();
+    }
 }
 
 ///////////////////////// VMThread Functions ///////////////////////////
@@ -233,7 +246,9 @@ TVMStatus VMThreadActivate(TVMThreadID thread) {
         MachineContextCreate(&(actual_thread->machine_context), SkeletonEntry, actual_thread, actual_thread->stack_base, actual_thread->stack_size);
         actual_thread->thread_state = VM_THREAD_STATE_READY;
         determine_queue_and_push(actual_thread);
-        // scheduler();
+        if ( (current_thread->thread_state == VM_THREAD_STATE_RUNNING && current_thread->thread_priority < actual_thread->thread_priority) ||  current_thread->thread_state != VM_THREAD_STATE_RUNNING) {
+            scheduler();
+        }
         MachineResumeSignals(sigstate);
         return VM_STATUS_SUCCESS;
     }
@@ -340,7 +355,6 @@ TVMStatus VMFileClose(int filedescriptor) {
 }
 
 
-// void MachineFileOpen(const char *filename, int flags, int mode, TMachineFileCallback callback, void *calldata);
 
 TVMStatus VMFileOpen(const char *filename, int flags, int mode, int *filedescriptor) {
     if (filename == NULL || filedescriptor == NULL) {

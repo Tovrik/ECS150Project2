@@ -44,16 +44,16 @@ public:
 typedef struct mutex{
     TVMutexIDRef mutex_id_ref;
     TVMThreadIDRef ownerid_ref;
-    list<TCB*> low_priority_list;
-    list<TCB*> normal_priority_list;
-    list<TCB*> high_priority_list;
+    deque<TCB*> low_priority_list;
+    deque<TCB*> normal_priority_list;
+    deque<TCB*> high_priority_list;
 };
 
 ///////////////////////// Globals ///////////////////////////
 #define VM_THREAD_PRIORITY_IDLE                  ((TVMThreadPriority)0x00)
 
 vector<TCB*> thread_vector;
-list<TVMMutexIDRef> mutex_list;
+vector<TVMMutexIDRef> mutex_list;
 deque<TCB*> low_priority_queue;
 deque<TCB*> normal_priority_queue;
 deque<TCB*> high_priority_queue;
@@ -423,7 +423,7 @@ TVMStatus VMFileSeek(int filedescriptor, int offset, int whence, int *newoffset)
 
 ///////////////////////// VMMutex Functions ///////////////////////////
 TVMStatus VMMutexCreate(TVMMutexIDRef mutexref) {
-
+    struct mutex m =
 }
 
 TVMStatus VMMutexDelete(TVMMutexID mutex) {

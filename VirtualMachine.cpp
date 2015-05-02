@@ -98,7 +98,8 @@ void scheduler_action(deque<TCB*> &Q) {
     if (current_thread->thread_state == VM_THREAD_STATE_READY) {
         determine_queue_and_push(current_thread);
     }
-    else if (current_thread->thread_state == VM_THREAD_STATE_WAITING) {
+    // need the ticks_remaining condition because threads that are waiting on file I/O are in wait state but shouldn't go to sleep_vector
+    else if (current_thread->thread_state == VM_THREAD_STATE_WAITING && current_thread->ticks_remaining != 0) {
         sleep_vector.push_back(current_thread);
     }
     TCB* temp = current_thread;
@@ -131,7 +132,8 @@ void scheduler() {
         if (current_thread->thread_state == VM_THREAD_STATE_READY) {
             determine_queue_and_push(current_thread);
         }
-        else if (current_thread->thread_state == VM_THREAD_STATE_WAITING) {
+        // need the ticks_remaining condition because threads that are waiting on file I/O are in wait state but shouldn't go to sleep_vector
+        else if (current_thread->thread_state == VM_THREAD_STATE_WAITING && current_thread->ticks_remaining != 0) {
             sleep_vector.push_back(current_thread);
         }
         TCB* temp = current_thread;
@@ -177,7 +179,9 @@ void MachineFileCallback(void* param, int result) {
     temp->thread_state = VM_THREAD_STATE_READY;
     determine_queue_and_push(temp);
     temp->call_back_result = result;
-    scheduler();
+    if ((current_thread->thread_state == VM_THREAD_STATE_RUNNING && current_thread->thread_priority < temp->thread_priority) || current_thread->thread_state != VM_THREAD_STATE_RUNNING) {
+        scheduler();
+    }
 }
 
 ///////////////////////// VMThread Functions ///////////////////////////
@@ -233,7 +237,9 @@ TVMStatus VMThreadActivate(TVMThreadID thread) {
         MachineContextCreate(&(actual_thread->machine_context), SkeletonEntry, actual_thread, actual_thread->stack_base, actual_thread->stack_size);
         actual_thread->thread_state = VM_THREAD_STATE_READY;
         determine_queue_and_push(actual_thread);
-        // scheduler();
+        if ((current_thread->thread_state == VM_THREAD_STATE_RUNNING && current_thread->thread_priority < actual_thread->thread_priority) || current_thread->thread_state != VM_THREAD_STATE_RUNNING) {
+            scheduler();
+        }
         MachineResumeSignals(sigstate);
         return VM_STATUS_SUCCESS;
     }
@@ -330,7 +336,6 @@ TVMStatus VMFileClose(int filedescriptor) {
     current_thread->thread_state = VM_THREAD_STATE_WAITING;
     MachineFileClose(filedescriptor, MachineFileCallback, current_thread);
     scheduler();
-
     if (current_thread->call_back_result != -1) {
         return VM_STATUS_SUCCESS;
     }
@@ -368,7 +373,7 @@ TVMStatus VMFileWrite(int filedescriptor, void *data, int *length) {
     current_thread->thread_state = VM_THREAD_STATE_WAITING;
     MachineFileWrite(filedescriptor, data, *length, MachineFileCallback, current_thread);
     scheduler();
-    if(current_thread->call_back_result != -1) {
+    if (current_thread->call_back_result != -1) {
         return VM_STATUS_SUCCESS;
     }
     else {
@@ -403,30 +408,29 @@ TVMStatus VMFileSeek(int filedescriptor, int offset, int whence, int *newoffset)
     else {
         return VM_STATUS_FAILURE;
     }
-
 }
 
 
 ///////////////////////// VMMutex Functions ///////////////////////////
-TVMStatus VMMutexCreate(TVMMutexIDRef mutexref) {
+// TVMStatus VMMutexCreate(TVMMutexIDRef mutexref) {
 
-}
+// }
 
-TVMStatus VMMutexDelete(TVMMutexID mutex) {
+// TVMStatus VMMutexDelete(TVMMutexID mutex) {
 
-}
+// }
 
-TVMStatus VMMutexQuery(TVMMutexID mutex, TVMThreadIDRef ownerref) {
+// TVMStatus VMMutexQuery(TVMMutexID mutex, TVMThreadIDRef ownerref) {
 
-}
+// }
 
-TVMStatus VMMutexAcquire(TVMMutexID mutex, TVMTick timeout) {
+// TVMStatus VMMutexAcquire(TVMMutexID mutex, TVMTick timeout) {
 
-}
+// }
 
-TVMStatus VMMutexRelease(TVMMutexID mutex) {
+// TVMStatus VMMutexRelease(TVMMutexID mutex) {
 
-}
+// }
 
 
 } // end extern C

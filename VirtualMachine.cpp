@@ -34,15 +34,26 @@ public:
     TVMTick ticks_remaining;
     SMachineContext machine_context; // for the context to switch to/from the thread
     int call_back_result;
+
 // Possibly need something to hold file return type
 // Possibly hold a pointer or ID of mutex waiting on
 // Possibly hold a list of held mutexes
+};
+
+///////////////////////// Structures ///////////////////////////
+typedef struct mutex{
+    TVMutexIDRef mutex_id_ref;
+    TVMThreadIDRef ownerid_ref;
+    deque<TCB*> low_priority_list;
+    deque<TCB*> normal_priority_list;
+    deque<TCB*> high_priority_list;
 };
 
 ///////////////////////// Globals ///////////////////////////
 #define VM_THREAD_PRIORITY_IDLE                  ((TVMThreadPriority)0x00)
 
 vector<TCB*> thread_vector;
+vector<TVMMutexIDRef> mutex_list;
 deque<TCB*> low_priority_queue;
 deque<TCB*> normal_priority_queue;
 deque<TCB*> high_priority_queue;
@@ -345,7 +356,6 @@ TVMStatus VMFileClose(int filedescriptor) {
 }
 
 
-// void MachineFileOpen(const char *filename, int flags, int mode, TMachineFileCallback callback, void *calldata);
 
 TVMStatus VMFileOpen(const char *filename, int flags, int mode, int *filedescriptor) {
     if (filename == NULL || filedescriptor == NULL) {
@@ -412,9 +422,9 @@ TVMStatus VMFileSeek(int filedescriptor, int offset, int whence, int *newoffset)
 
 
 ///////////////////////// VMMutex Functions ///////////////////////////
-// TVMStatus VMMutexCreate(TVMMutexIDRef mutexref) {
-
-// }
+TVMStatus VMMutexCreate(TVMMutexIDRef mutexref) {
+    struct mutex m =
+}
 
 // TVMStatus VMMutexDelete(TVMMutexID mutex) {
 

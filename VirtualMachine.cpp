@@ -42,7 +42,7 @@ public:
 
 ///////////////////////// Structures ///////////////////////////
 typedef struct mutex{
-    TVMutexIDRef mutex_id_ref;
+    TVMMutexIDRef mutex_id_ref;
     TVMThreadIDRef ownerid_ref;
     deque<TCB*> low_priority_list;
     deque<TCB*> normal_priority_list;
@@ -422,9 +422,9 @@ TVMStatus VMFileSeek(int filedescriptor, int offset, int whence, int *newoffset)
 
 
 ///////////////////////// VMMutex Functions ///////////////////////////
-TVMStatus VMMutexCreate(TVMMutexIDRef mutexref) {
-    struct mutex m =
-}
+// TVMStatus VMMutexCreate(TVMMutexIDRef mutexref) {
+//     struct mutex m =
+// }
 
 // TVMStatus VMMutexDelete(TVMMutexID mutex) {
 

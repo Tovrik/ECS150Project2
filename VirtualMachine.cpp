@@ -109,6 +109,11 @@ void determine_queue_and_push(TCB* thread) {
     }
 }
 
+
+void mutex_determine_queue_and_push(TCB* thread, Mutex* mutex) {
+
+}
+
 void determine_queue_and_remove(TCB *thread) {
     if (thread->thread_priority == VM_THREAD_PRIORITY_LOW) {
         actual_removal(thread, low_priority_queue);
@@ -444,71 +449,119 @@ TVMStatus VMFileSeek(int filedescriptor, int offset, int whence, int *newoffset)
 
 /////////////////////// VMMutex Functions ///////////////////////////
 TVMStatus VMMutexCreate(TVMMutexIDRef mutexref) {
+    MachineSuspendSignals(sigstate);
     if(mutexref == NULL) {
         return VM_STATUS_ERROR_INVALID_PARAMETER;
     }
-    MachineSuspendSignals(sigstate);
     *mutexref = (unsigned int)mutex_vector.size();
     current_mutex = new Mutex(mutexref, (TVMThreadIDRef)-1);
     mutex_vector.push_back(current_mutex);
-    MachineEnableSignals();
+    MachineResumeSignals(sigstate);
     return VM_STATUS_SUCCESS;
 }
 
 TVMStatus VMMutexDelete(TVMMutexID mutex) {
-    // if(mutex_vector[mutex]->deleted == true || mutex >= mutex_vector.size()) {
-    //     return VM_STATUS_ERROR_INVALID_ID;
-    // }
-    // else if(mutex_vector[mutex]->lock == true) {
-    //     return VM_STATUS_ERROR_INVALID_ID;
-    // }
-    // mutex_vector[mutex]->deleted = true;
-    // return VM_STATUS_SUCCESS;
+    MachineSuspendSignals(sigstate);
+    if(mutex_vector[mutex] == NULL || mutex >= mutex_vector.size()) {
+        MachineResumeSignals(sigstate);
+        return VM_STATUS_ERROR_INVALID_ID;
+    }
+    else if(*(mutex_vector[mutex]->owner_id_ref) != -1) {
+        MachineResumeSignals(sigstate);
+        return VM_STATUS_ERROR_INVALID_ID;
+    }
+    delete mutex_vector[mutex];
+    mutex_vector[mutex] = NULL;
+    MachineResumeSignals(sigstate);
+    return VM_STATUS_SUCCESS;
 }
 
 TVMStatus VMMutexQuery(TVMMutexID mutex, TVMThreadIDRef ownerref) {
+    MachineSuspendSignals(sigstate);
     if(ownerref == NULL) {
+        MachineResumeSignals(sigstate);
         return VM_STATUS_ERROR_INVALID_PARAMETER;
     }
-    else if(mutex >= mutex_vector.size()) {
+    else if(mutex >= mutex_vector.size() || mutex_vector[mutex] == NULL) {
+        MachineResumeSignals(sigstate);
         return VM_STATUS_ERROR_INVALID_ID;
     }
     else if(*(mutex_vector[mutex]->owner_id_ref) == -1) {
+        MachineResumeSignals(sigstate);
         return VM_THREAD_ID_INVALID;
     }
     else {
         *ownerref = *(mutex_vector[mutex]->owner_id_ref);
     }
+    MachineResumeSignals(sigstate);
     return VM_STATUS_SUCCESS;
 
 }
 
 TVMStatus VMMutexAcquire(TVMMutexID mutex, TVMTick timeout) {
-    // if(mutex_vector[mutex]->deleted == true || mutex >= mutex_vector.size()) {
-    //     return VM_STATUS_ERROR_INVALID_ID;
-    // }
-    // else if(mutex_vector[mutex]->lock == false) {
-    //     mutex_vector[mutex]->lock = true;
-    //     mutex_vector[mutex]->owner_id_ref = current_thread->id;
-    //     return VM_STATUS_SUCCESS;
-    // }
-    // else if(mutex_vector[mutex]->lock == true) {
+    MachineSuspendSignals(sigstate);
+    VMPrint("test\n");
+    if(mutex > mutex_vector.size()) {
+        MachineResumeSignals(sigstate);
+        return VM_STATUS_ERROR_INVALID_ID;
+    }
+
+    if(*(mutex_vector[mutex]->owner_id_ref) == -1) {
+        VMPrint("..\n");
+
+        mutex_vector[mutex]->owner_id_ref = current_thread->id;
+    }
+    else if(timeout == VM_TIMEOUT_IMMEDIATE) {
+        VMPrint("...\n");
+        MachineResumeSignals(sigstate);
+        return VM_STATUS_FAILURE;
+    }
+    else if(timeout == VM_TIMEOUT_INFINITE) {
+        VMPrint("test2\n");
+        current_thread->thread_state = VM_THREAD_STATE_WAITING;
+        if(current_thread->thread_priority == VM_THREAD_PRIORITY_LOW) {
+            mutex_vector[mutex]->mutex_low_priority_queue.push_back(current_thread->id);
+        }
+        else if(current_thread->thread_priority == VM_THREAD_PRIORITY_NORMAL) {
+            mutex_vector[mutex]->mutex_normal_priority_queue.push_back(current_thread->id);
+        }
+        else if(current_thread->thread_priority == VM_THREAD_PRIORITY_HIGH) {
+            mutex_vector[mutex]->mutex_high_priority_queue.push_back(current_thread->id);
+        }
+        scheduler();
+    }
+    else {
+        VMPrint("..\n");
+        determine_queue_and_push(current_thread);
+        VMPrint(".....\n");
+        VMThreadSleep(timeout);
+        VMPrint("......\n");
+        if(*(mutex_vector[mutex]->owner_id_ref) != *(current_thread->id)) {
+            MachineResumeSignals(sigstate);
+            return VM_STATUS_FAILURE;
+        }
+
+    }
+    MachineResumeSignals(sigstate);
+    return VM_STATUS_SUCCESS;
+}
+    // else if(mutex_vector[mutex]->owner_id_ref != -1) {
     //     if(timeout == VM_TIMEOUT_IMMEDIATE) {
     //         return VM_STATUS_FAILURE;
     //     }
-    //     mutex_vector[mutex]->ticks_remaining = timeout;
-    //     while(mutex_vector[mutex]->ticks_remaining > 0) {
-    //         if(mutex_vector[mutex]->lock == false) {
-    //             mutex_vector[mutex]->ticks_remaining = 0;
-    //             mutex_vector[mutex]->lock = true;
+    //     else if(timeout > 0) {
+    //         if(*(mutex_vector[mutex]->ownerid_ref) != -1) {
     //             mutex_vector[mutex]->owner_id_ref = current_thread->id;
     //         }
     //         else {
-    //             if(mutex_vector[mutex]->ticks_remaining != VM_TIMEOUT_INFINITE) {
+    //             if(timeout != VM_TIMEOUT_INFINITE) {
     //                 mutex_vector[mutex]->ticks_remaining--;
     //             }
     //             VMThreadSleep(1);
     //         }
+    //     }
+    //     else if(time != VM_TIMEOUT_INFINITE) {
+
     //     }
     //     if(mutex_vector[mutex]->ticks_remaining == 0 && mutex_vector[mutex]->lock == true) {
     //         return VM_STATUS_FAILURE;
@@ -519,21 +572,53 @@ TVMStatus VMMutexAcquire(TVMMutexID mutex, TVMTick timeout) {
     // }
     // return VM_STATUS_SUCCESS;
 
-}
+
 
 TVMStatus VMMutexRelease(TVMMutexID mutex) {
-    // if(mutex_vector[mutex]->deleted == true || mutex >= mutex_vector.size()) {
-    //     return VM_STATUS_ERROR_INVALID_ID;
-    // }
-    // else if(mutex_vector[mutex]->lock == false) {
-    //     return VM_STATUS_ERROR_INVALID_STATE;
-    // }
-    // else if(mutex_vector[mutex]->lock == true) {
-    //     *(mutex_vector[mutex]->owner_id_ref) = -1;
-    //     mutex_vector[mutex]->lock = false;
-    //     mutex_vector[mutex]->ticks_remaining = false;
-    // }
-    // return VM_STATUS_SUCCESS;
+    MachineSuspendSignals(sigstate);
+    if(mutex_vector[mutex] == NULL || mutex >= mutex_vector.size()) {
+        MachineResumeSignals(sigstate);
+        return VM_STATUS_ERROR_INVALID_ID;
+    }
+    else if(*(mutex_vector[mutex]->owner_id_ref) != *(current_thread->id)) {
+        MachineResumeSignals(sigstate);
+        return VM_STATUS_ERROR_INVALID_STATE;
+    }
+    else {
+        TCB* new_thread;
+        if(!mutex_vector[mutex]->mutex_high_priority_queue.empty()) {
+            new_thread = thread_vector[*(mutex_vector[mutex]->mutex_high_priority_queue.front())];
+            mutex_vector[mutex]->mutex_high_priority_queue.pop_front();
+            thread_vector[*(new_thread->id)]->thread_state = VM_THREAD_STATE_READY;
+            high_priority_queue.push_back(thread_vector[*(new_thread->id)]);
+            if(thread_vector[*(new_thread->id)]->thread_priority > current_thread->thread_priority) {
+                scheduler();
+            }
+        }
+        else if(!mutex_vector[mutex]->mutex_normal_priority_queue.empty()) {
+            new_thread = thread_vector[*(mutex_vector[mutex]->mutex_normal_priority_queue.front())];
+            mutex_vector[mutex]->mutex_normal_priority_queue.pop_front();
+            thread_vector[*(new_thread->id)]->thread_state = VM_THREAD_STATE_READY;
+            normal_priority_queue.push_back(thread_vector[*(new_thread->id)]);
+            if(thread_vector[*(new_thread->id)]->thread_priority > current_thread->thread_priority) {
+                scheduler();
+            }
+        }
+        else if(!mutex_vector[mutex]->mutex_low_priority_queue.empty()) {
+            new_thread = thread_vector[*(mutex_vector[mutex]->mutex_low_priority_queue.front())];
+            mutex_vector[mutex]->mutex_low_priority_queue.pop_front();
+            thread_vector[*(new_thread->id)]->thread_state = VM_THREAD_STATE_READY;
+            low_priority_queue.push_back(thread_vector[*(new_thread->id)]);
+            if(thread_vector[*(new_thread->id)]->thread_priority > current_thread->thread_priority) {
+                scheduler();
+            }
+        }
+        else {
+            *(mutex_vector[mutex]->owner_id_ref) = -1;
+        }
+    }
+    MachineResumeSignals(sigstate);
+    return VM_STATUS_SUCCESS;
 
 }
 

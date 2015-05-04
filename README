@@ -8,7 +8,8 @@ Shai Bruhis:
 - sbruhis@ucdavis.edu
 
 ## Instructions
-To compile type "make" which runs our Makefile and both compiles and executes the program
+To compile type "make" which runs our Makefile
+Then type "./vm ./hello.so" to run the code
 
 ## Resources
 

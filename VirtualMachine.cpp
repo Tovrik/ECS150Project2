@@ -34,37 +34,22 @@ public:
     TVMTick ticks_remaining;
     SMachineContext machine_context; // for the context to switch to/from the thread
     int call_back_result;
-
-// Possibly need something to hold file return type
-// Possibly hold a pointer or ID of mutex waiting on
-// Possibly hold a list of held mutexes
 };
 
- // typedef struct mutex{
- //    TVMutexIDRef mutex_id_ref;
- //    TVMThreadIDRef ownerid_ref;
- //    deque<TCB*> low_priority_list;
- //    deque<TCB*> normal_priority_list;
- //    deque<TCB*> high_priority_list;
- // };
 
-///////////////////////// Structures ///////////////////////////
+
+///////////////////////// Mutex Class definition ///////////////////////////
 class Mutex{
     public:
         Mutex(TVMMutexIDRef mutex_id_ref, TVMThreadIDRef owner_id_ref):
             mutex_id_ref(mutex_id_ref),
             owner_id_ref(owner_id_ref) {}
 
-        // Mutex(){};
-
         TVMMutexIDRef mutex_id_ref;
         TVMThreadIDRef owner_id_ref;
         deque<TCB*> mutex_low_priority_queue;
         deque<TCB*> mutex_normal_priority_queue;
         deque<TCB*> mutex_high_priority_queue;
-        // bool lock;
-        // bool deleted;
-        // volatile TVMTick ticks_remaining;
 };
 
 
@@ -152,8 +137,7 @@ void scheduler_action(deque<TCB*> &Q) {
     Q.pop_front();
     // set current to running
     current_thread->thread_state = VM_THREAD_STATE_RUNNING;
-    // MachineContextSwitch(mcntxold,mcntxnew), old = current, new = next = Q.front()
-    // VMPrint("switching context\n");
+
     MachineContextSwitch(&(temp->machine_context), &(current_thread->machine_context));
 }
 
@@ -161,20 +145,16 @@ void scheduler_action(deque<TCB*> &Q) {
 
 void scheduler() {
     if (!high_priority_queue.empty()) {
-        // VMPrint("high\n");
         scheduler_action(high_priority_queue);
     }
     else if (!normal_priority_queue.empty()) {
-        // VMPrint("normal\n");
         scheduler_action(normal_priority_queue);
     }
     else if (!low_priority_queue.empty()) {
-        // VMPrint("low\n");
         scheduler_action(low_priority_queue);
     }
     // schedule idle thread
     else {
-        // VMPrint("idle\n");
         if (current_thread->thread_state == VM_THREAD_STATE_READY) {
             determine_queue_and_push(current_thread);
         }
@@ -206,19 +186,15 @@ void release(TVMMutexID mutex, deque<TCB*> &Q) {
 ///////////////////////// Callbacks ///////////////////////////
 // for ref: typedef void (*TMachineAlarmCallback)(void *calldata);
 void timerDecrement(void *calldata) {
-    // timer -= 1;
     // decrements ticks for each sleeping thread
     for (int i = 0; i < sleep_vector.size(); i++) {
-        // if (sleep_vector[i]->ticks_remaining > 0) {
             sleep_vector[i]->ticks_remaining--;
-            // VMPrint("%d\n",sleep_vector[i]->ticks_remaining);
             if (sleep_vector[i]->ticks_remaining ==  0) {
                 sleep_vector[i]->thread_state = VM_THREAD_STATE_READY;
                 determine_queue_and_push(sleep_vector[i]);
                 sleep_vector.erase(sleep_vector.begin() + i);
                 scheduler();
             }
-        // }
     }
 }
 
@@ -245,21 +221,6 @@ void MachineFileCallback(void* param, int result) {
 }
 
 ///////////////////////// VMThread Functions ///////////////////////////
-// VMStart
-// -Use typedef to define a function pointer and then create an instance/variable of that function pointer type
-// -Then set that variable equal to the address returned from VMLoadModule
-// -Then you'll want to make sure the returned address from VMLoadModule wasn't an error value
-// -Next, call the function pointed to by that function pointer - holding the address of VMMain
-// -Then you'll want to check which functions are called in the hello.c
-// -You'll notice that it in hello.c it calls VMPrint
-// -So get VMPrint to work using some system calls and error handling
-
-// So the general order you want to call things in VMStart would be something like:
-// 1. VMLoadModule
-// 2. MachineInitialize
-// 3. MachineRequestAlarm
-// 4. MachineEnableSignals
-// 5. VMMain (whatever VMLoadModule returned)
 TVMStatus VMStart(int tickms, int machinetickms, int argc, char *argv[]) { //The time in milliseconds of the virtual machine tick is specified by the tickms parameter, the machine responsiveness is specified by the machinetickms.
     typedef void (*TVMMainEntry)(int argc, char* argv[]);
     TVMMainEntry VMMain;
@@ -276,7 +237,6 @@ TVMStatus VMStart(int tickms, int machinetickms, int argc, char *argv[]) { //The
         idle_thread = new TCB((unsigned int *)1, VM_THREAD_STATE_DEAD, VM_THREAD_PRIORITY_IDLE, 0x100000, NULL, NULL, 0);
         idle_thread->thread_state = VM_THREAD_STATE_READY;
         MachineContextCreate(&(idle_thread->machine_context), idleEntry, NULL, idle_thread->stack_base, idle_thread->stack_size);
-        // thread_vector.push_back(idle_thread);
         VMMain(argc, argv);
         return VM_STATUS_SUCCESS;
     }
@@ -293,7 +253,6 @@ TVMStatus VMThreadActivate(TVMThreadID thread) {
         return VM_STATUS_ERROR_INVALID_STATE;
     }
     else {
-        //void MachineContextCreate(SMachineContextRef mcntxref, void (*entry)(void *), void *param, void *stackaddr, size_t stacksize);
         MachineContextCreate(&(actual_thread->machine_context), SkeletonEntry, actual_thread, actual_thread->stack_base, actual_thread->stack_size);
         actual_thread->thread_state = VM_THREAD_STATE_READY;
         determine_queue_and_push(actual_thread);
@@ -348,13 +307,10 @@ TVMStatus VMThreadID(TVMThreadIDRef threadref) {
     }
 }
 
-// if tick == VM_TIMEOUT_INFINITE the current thread yields to the next ready thread. It basically
-// goes to the end of its ready queue. The processing quantum is the amount of time that each thread
-// (or process) gets for its time slice. You can assume it is one tick.
 TVMStatus VMThreadSleep(TVMTick tick){
-    // MachineSuspendSignals(sigstate);
+    MachineSuspendSignals(sigstate);
     if (tick == VM_TIMEOUT_INFINITE) {
-        // MachineResumeSignals(sigstate);
+        MachineResumeSignals(sigstate);
         return VM_STATUS_ERROR_INVALID_PARAMETER;
     }
     else {
@@ -362,31 +318,39 @@ TVMStatus VMThreadSleep(TVMTick tick){
         current_thread->thread_state = VM_THREAD_STATE_WAITING;
         // determine_queue_and_push();
         scheduler();
+        MachineResumeSignals(sigstate);
         return VM_STATUS_SUCCESS;
     }
 }
 
 TVMStatus VMThreadState(TVMThreadID thread, TVMThreadStateRef stateref) {
+    MachineSuspendSignals(sigstate);
     if(thread == VM_THREAD_ID_INVALID) {
+        MachineResumeSignals(sigstate);
         return VM_STATUS_ERROR_INVALID_ID;
     }
     if (stateref == NULL) {
+        MachineResumeSignals(sigstate);
         return VM_STATUS_ERROR_INVALID_PARAMETER;
     }
     else {
         *stateref = thread_vector[thread]->thread_state;
+        MachineResumeSignals(sigstate);
         return VM_STATUS_SUCCESS;
     }
 }
 
 TVMStatus VMThreadTerminate(TVMThreadID thread) {
+    MachineSuspendSignals(sigstate);
     if (thread_vector[thread]->thread_state == VM_THREAD_STATE_DEAD) {
+        MachineResumeSignals(sigstate);
         return VM_STATUS_ERROR_INVALID_STATE;
     }
     else {
         thread_vector[thread]->thread_state = VM_THREAD_STATE_DEAD;
         determine_queue_and_remove(thread_vector[thread]);
         scheduler();
+        MachineResumeSignals(sigstate);
         return VM_STATUS_SUCCESS;
     }
 }
